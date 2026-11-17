@@ -55,7 +55,8 @@ jobs:
 
   deploy:
     needs: sync
-    if: needs.sync.outputs.pushed == 'true'
+    # Deploy on new upstream commits, or when manually dispatched
+    if: always() && (needs.sync.outputs.pushed == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
