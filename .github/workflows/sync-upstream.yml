@@ -1,0 +1,49 @@
+# Sync fork with upstream, then push to trigger Cloudflare Workers Builds.
+# CF's GitHub App receives the push webhook (GITHUB_TOKEN's no-recurse
+# limitation only applies to GitHub Actions workflows, not external apps).
+name: Sync upstream
+
+on:
+  schedule:
+    # Every Monday 01:00 UTC = 09:00 Asia/Shanghai
+    - cron: "0 1 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Sync from upstream
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git remote add upstream https://github.com/kaishuu0123/text-diff-view.git
+          # --no-tags: never push tags (upstream v* tags would fire the
+          # electron-build release workflow)
+          git fetch upstream main --no-tags
+
+          BEHIND=$(git rev-list --count main..upstream/main)
+          echo "New upstream commits: $BEHIND"
+          echo "behind=$BEHIND" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$BEHIND" -eq 0 ]; then
+            echo "Already up to date, nothing to push."
+            exit 0
+          fi
+
+          # Replay fork-only commits (sync workflow + wrangler.jsonc) on top
+          git rebase upstream/main
+          git push origin main --force-with-lease

@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "text-diff-view",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./out/renderer",
+  },
+  "routes": [
+    { "pattern": "textdiff.niyoh.top", "custom_domain": true },
+  ],
+  "observability": { "enabled": true },
+}
