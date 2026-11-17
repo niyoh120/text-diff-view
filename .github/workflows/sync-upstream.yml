@@ -1,7 +1,7 @@
-# Sync fork with upstream, then push to trigger Cloudflare Workers Builds.
-# CF's GitHub App receives the push webhook (GITHUB_TOKEN's no-recurse
-# limitation only applies to GitHub Actions workflows, not external apps).
-name: Sync upstream
+# Sync fork with upstream, then build & deploy to Cloudflare Workers.
+# Deploy uses CLOUDFLARE_API_TOKEN via wrangler-action (Workers Builds is
+# blocked on this account, so GitHub Actions does the CI instead).
+name: Sync upstream & deploy
 
 on:
   schedule:
@@ -13,12 +13,14 @@ permissions:
   contents: write
 
 concurrency:
-  group: sync-upstream
+  group: sync-and-deploy
   cancel-in-progress: false
 
 jobs:
   sync:
     runs-on: ubuntu-latest
+    outputs:
+      pushed: ${{ steps.sync.outputs.pushed }}
     steps:
       - name: Checkout fork
         uses: actions/checkout@v7
@@ -27,6 +29,7 @@ jobs:
           fetch-depth: 0
 
       - name: Sync from upstream
+        id: sync
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -41,9 +44,40 @@ jobs:
           echo "behind=$BEHIND" >> "$GITHUB_STEP_SUMMARY"
           if [ "$BEHIND" -eq 0 ]; then
             echo "Already up to date, nothing to push."
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           # Replay fork-only commits (sync workflow + wrangler.jsonc) on top
           git rebase upstream/main
           git push origin main --force-with-lease
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: sync
+    if: needs.sync.outputs.pushed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Build renderer
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build:vite
+
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          command: deploy
