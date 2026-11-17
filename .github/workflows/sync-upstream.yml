@@ -78,7 +78,8 @@ jobs:
           pnpm build:vite
 
       - name: Deploy to Cloudflare Workers
-        uses: cloudflare/wrangler-action@v4
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          command: deploy
+        # npx instead of wrangler-action: its `pnpm add wrangler` step trips
+        # pnpm v11's blocked-build-scripts check (workerd postinstall)
+        run: npx --yes wrangler@4 deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
